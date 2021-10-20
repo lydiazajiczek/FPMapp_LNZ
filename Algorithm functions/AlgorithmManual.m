@@ -103,6 +103,8 @@ end
 if options.InitPhasePupil == 1
     IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,true);
     [PhaseIn,Pupil,PupilPhase] = main_dpc(IDPC,systemSetup,true);
+else
+    PhaseIn = zeros(size(ImagesIn,1),size(ImagesIn,2));
 end
 
 if options.useGPU == 1
