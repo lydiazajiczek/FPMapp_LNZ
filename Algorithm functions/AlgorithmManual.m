@@ -83,8 +83,6 @@ thr = (max(bck)+min(bck))/2;
 %remove background first using ROI of whole image
 if options.dfBackground == 1
     [ImagesIn, ~] = BackgroundRemovingROI(ImagesIn,ROI_bg,LEDs,imageColOrder,systemSetup);
-else
-    [ImagesIn, ~] = BackgroundRemoving(ImagesIn,thr);
 end
 
 %%%%%%%%%%%%put this back for stitching
@@ -98,7 +96,12 @@ end
 %then crop
 %[ImagesIn,PhaseIn,imageColOrder] = InputImagesCrop(ImagesIn,PhaseIn,imageColOrder,LEDsUsed,ROI);
 [ImagesIn,imageColOrder] = InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI);
-[~, bck] = BackgroundRemoving(ImagesIn,thr);
+%remove background first using ROI of whole image
+if options.dfBackground == 1
+    [~, bck] = BackgroundRemoving(ImagesIn,thr);
+else
+    [ImagesIn, bck] = BackgroundRemoving(ImagesIn,thr);
+end
 %then do pupil initialization just of cropped region
 if options.InitPhasePupil == 1
     IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,true);

@@ -6,7 +6,7 @@ function I = LoadImage(filePath)
 %       I - loaded images (3D matrix)   
 
 f = waitbar(0,'Loading big TIFF ... ');
-I = double(TIFFStack(filePath));
+I = FastTiff(filePath);
 try
     close(f)
 end
