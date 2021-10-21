@@ -80,10 +80,8 @@ else
 end
 thr = (max(bck)+min(bck))/2;
 
-%remove background first using ROI of whole image
-if options.dfBackground == 1
-    [ImagesIn, ~] = BackgroundRemovingROI(ImagesIn,ROI_bg,LEDs,imageColOrder,systemSetup);
-end
+%Get background ROI before cropping
+bgStack = ImagesIn(ROI_bg(2):ROI_bg(2)+ROI_bg(4)-1,ROI_bg(1):ROI_bg(1)+ROI_bg(3)-1,:);
 
 %%%%%%%%%%%%put this back for stitching
 
@@ -98,6 +96,7 @@ end
 [ImagesIn,imageColOrder] = InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI);
 %remove background first using ROI of whole image
 if options.dfBackground == 1
+    [ImagesIn, ~] = BackgroundRemovingROI(ImagesIn,bgStack,LEDs,imageColOrder,systemSetup);
     [~, bck] = BackgroundRemoving(ImagesIn,thr);
 else
     [ImagesIn, bck] = BackgroundRemoving(ImagesIn,thr);

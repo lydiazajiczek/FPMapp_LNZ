@@ -12,7 +12,7 @@ end
     p = 0;
     path_out = [];
     for m = length(tmp):-1:1
-        if tmp(m) == 47
+        if tmp(m) == 47 || tmp(m) == 92 % Checking if / or \ characters
             p = p+1;
         end
         sgn = tmp(m);

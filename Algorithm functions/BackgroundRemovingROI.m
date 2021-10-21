@@ -1,4 +1,4 @@
-function [ImagesIn, bck] = BackgroundRemovingROI(ImagesIn, ROI_bg, LEDs, imageColOrder, systemSetup)
+function [ImagesIn, bck] = BackgroundRemovingROI(ImagesIn, bgStack, LEDs, imageColOrder, systemSetup)
 % Function that removes background from darkfield images using 
 % mean value of a user selected ROI
 %   Inputs:
@@ -12,9 +12,10 @@ function [ImagesIn, bck] = BackgroundRemovingROI(ImagesIn, ROI_bg, LEDs, imageCo
 %       bck - vector of background values (zero for brightfield images)
 
 ImagesIn = double(ImagesIn);
+bgStack = double(bgStack);
 nImgs = size(ImagesIn,3);
 [dF,~,~,~] = Used_LEDs(LEDs,systemSetup,3);
-dF = boolean(dF);
+dF = logical(dF);
 %dfImageIndices = imageColOrder.*dF;
 %idx = dfImageIndices > 0;
 %dfImageList(:) = sort(dfImageIndices(idx))
@@ -25,7 +26,7 @@ if nImgs == max(max(imageColOrder))
         [j,k] = find(imageColOrder==i);
         if(dF(j,k))
             I = ImagesIn(:,:,i);
-            bG = I(ROI_bg(2):ROI_bg(2)+ROI_bg(4)-1,ROI_bg(1):ROI_bg(1)+ROI_bg(3)-1);
+            bG = bgStack(:,:,i);
             val = mean(mean(bG));
             ImagesIn(:,:,i) = I - val;
             bck(i) = val;
