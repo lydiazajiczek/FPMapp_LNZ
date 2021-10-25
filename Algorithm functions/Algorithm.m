@@ -119,6 +119,7 @@ sp0 = max(max(max(abs(idx_Y2-idx_Y(1:end-1,:)))),...
 mx = round(sp0/3);
 if mx<3; mx = 3; end
 %% main algorithm
+others = evalin('base','others');
 
 if options.LEDcorrection == '2'
     warning('off')
@@ -206,6 +207,12 @@ switch options.algorithm
             if showIm == 1
                 DisplayIterationResult(o,P,erro,rectype,erroS)
             end
+            if others.saveIterations == 1
+                if iter == 1
+                    iterationTiff = [];
+                end
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
+            end
         end
         phase = angle(o);
         f = ActualizeWaitbar(iter,options.maxIter,f,options);
@@ -269,6 +276,12 @@ switch options.algorithm
             if showIm == 1
                 DisplayIterationResult(o,P,erro,rectype,erroS)
             end
+            if others.saveIterations == 1
+                if iter == 1
+                    iterationTiff = [];
+                end
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
+            end
         end
         phase = angle(o);
         f = ActualizeWaitbar(iter,options.maxIter,f,options);
@@ -320,6 +333,12 @@ switch options.algorithm
             if showIm == 1
                 DisplayIterationResult(o,P,erro,rectype,erroS)
             end
+            if others.saveIterations == 1
+                if iter == 1
+                    iterationTiff = [];
+                end
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
+            end
         end
         phase = angle(o);
         f = ActualizeWaitbar(iter,options.maxIter,f,options);
@@ -352,6 +371,46 @@ if s == 1
 end
 pause(0.1);
 end
+
+function iterationTiff = SaveIterationResult(o,iter,maxIter,iterationTiff)
+others = evalin('base','others');
+if iter == 1
+    lD = others.iterationsSaveDir;
+
+t = now;
+d = datetime(t,'ConvertFrom','datenum');
+tmp = uint8(char(d));
+for m = 1:length(tmp)
+    if(tmp(m)) == 58
+        tmp(m) = 45;
+    end
+end
+d = char(tmp(1:end-3));
+
+iterationTiff = Tiff(strcat(lD,'/Iteration_Amplitude_',d,'.tif'),'w');
+end
+
+
+tagstruct.ImageLength = size(o,1);
+tagstruct.ImageWidth = size(o,2);
+tagstruct.SampleFormat = 1; % uint
+tagstruct.Photometric = Tiff.Photometric.MinIsBlack;
+tagstruct.BitsPerSample = 16;
+tagstruct.SamplesPerPixel = 1;
+tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
+
+setTag(iterationTiff,tagstruct);
+
+amplitude = abs(o);
+amplitude = amplitude-min(min(amplitude));
+amplitude = amplitude./max(max(amplitude)).*65535;
+write(iterationTiff,uint16(amplitude));
+writeDirectory(iterationTiff);
+if iter==maxIter
+    close(iterationTiff)
+end
+end
+
 
 function f = ActualizeWaitbar(iter,maxIter,f,options)
 % waitbar
