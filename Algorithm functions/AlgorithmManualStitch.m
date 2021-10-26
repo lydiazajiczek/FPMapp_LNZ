@@ -323,9 +323,9 @@ fprintf(f_amp,'dim = 2\n');
 f_ph = fopen([saveDir '\PhaseTileConfiguration.txt'],'w+');
 fprintf(f_ph,'dim = 2\n');
 for i=1:nz
-   str = ['amplitude' num2str(i,'%03d') '.tif; ; (' num2str(tile_config(:,1)) ',' num2str(tile_config(:,2)) ')\n'];
+   str = ['amplitude' num2str(i,'%03d') '.tif; ; (' num2str(tile_config(i,1)) ',' num2str(tile_config(i,2)) ')\n'];
    fprintf(f_amp,str);
-   str = ['phase' num2str(i,'%03d') '.tif; ; (' num2str(tile_config(:,1)) ',' num2str(tile_config(:,2)) ')\n'];
+   str = ['phase' num2str(i,'%03d') '.tif; ; (' num2str(tile_config(i,1)) ',' num2str(tile_config(i,2)) ')\n'];
    fprintf(f_ph,str);
 end
 fclose(f_amp);
