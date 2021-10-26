@@ -1,3 +1,5 @@
+function [Fx,Fy] = setCoordinate(ps,dim)
+
 % set coordinates x and y in real space
 x        = -(dim(2)-mod(dim(2), 2))/2:1:(dim(2)-mod(dim(2), 2))/2-(mod(dim(2), 2)==0);
 x        = ps*x;
@@ -15,3 +17,5 @@ fy       = ifftshift(fy);
 
 % generate 2D grid
 [Fx, Fy] = meshgrid(fx, fy);
+
+end

@@ -1,14 +1,25 @@
-function ROI = ROISelection(in)
+function ROI = ROISelection(in,bg)
 % Function that selects Region Of Interest
 %   Input:
 %       in - image
+%       bg - is it background ROI selection?
 %   Output:
 %       ROI - Region Of Interest       
 %           ROI = [x0,y0,xSize,ySize];
 figure(100);
-set(gcf,'Name','ROI selection');
+
+if ~bg
+    set(gcf,'Name','ROI selection');
+else
+    set(gcf,'Name','Background ROI selection');
+end
 set(gcf,'NumberTitle','off');
-img = imagesc(in); colormap gray; title('ROI selection');
+img = imagesc(in); colormap gray; 
+if ~bg
+    title('ROI selection');
+else
+    title('Background ROI selection');
+end
 [~,~,~,ROI] = imcrop(img);
 ROI = round(ROI);
 if ~isempty(ROI)

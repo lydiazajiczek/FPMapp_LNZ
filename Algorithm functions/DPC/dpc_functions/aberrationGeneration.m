@@ -24,8 +24,8 @@
 % You should have received a copy of the GNU General Public License       %
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.   %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function aberration = aberrationGeneration(zernike_coeff)
-    global zernike_poly dim;
+function aberration = aberrationGeneration(zernike_coeff, zernike_poly, dim)
+    %global zernike_poly dim;
     aberration = zernike_poly*zernike_coeff;
     aberration = reshape(aberration, dim);
 end

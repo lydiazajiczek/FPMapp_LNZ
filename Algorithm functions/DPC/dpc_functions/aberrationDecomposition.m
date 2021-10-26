@@ -23,7 +23,7 @@
 % You should have received a copy of the GNU General Public License       %
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.   %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function zernike_coeff = aberrationDecomposition(aberration)
-    global zernike_poly;
+function zernike_coeff = aberrationDecomposition(aberration, zernike_poly)
+    %global zernike_poly;
     zernike_coeff = zernike_poly'*aberration(:);
 end

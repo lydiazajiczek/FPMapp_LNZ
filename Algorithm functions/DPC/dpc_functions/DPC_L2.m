@@ -33,8 +33,8 @@
 % You should have received a copy of the GNU General Public License       %
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.   %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [amplitude, phase] = DPC_L2(zernike_coeff, reg_L2)
-    global pupil dim fIDPC source use_gpu
+function [amplitude, phase] = DPC_L2(pupil, dim, fIDPC, source, zernike_coeff, zernike_poly, reg_L2, use_gpu)
+    %global pupil dim fIDPC source use_gpu
     IF              = @(x) ifft2(x);
     Hi              = zeros(dim(1), dim(2), size(source, 3));
     Hr              = zeros(dim(1), dim(2), size(source, 3));    
@@ -42,7 +42,7 @@ function [amplitude, phase] = DPC_L2(zernike_coeff, reg_L2)
         Hi = gpuArray(Hi);
         Hr = gpuArray(Hr);
     end
-    pupilphase      = aberrationGeneration(zernike_coeff);
+    pupilphase      = aberrationGeneration(zernike_coeff, zernike_poly, dim);
     pupil_aberrated = pupil.*exp(1i*pupilphase);
 
     for source_index = 1:size(source, 3)

@@ -1,4 +1,4 @@
-function [o,phase,P,erro,erroS,idx_X,idx_Y] = Algorithm(I, PH, N_obj, idx_X, idx_Y, imageColOrder, recOrder, pupil0, options, cImag, f, others, rectype)
+function [o,phase,P,erro,erroS,idx_X,idx_Y] = AlgorithmStitch(I, PH, N_obj, idx_X, idx_Y, imageColOrder, recOrder, pupil0, options, cImag, rectype)
 % Function that executes FPM algorithms
 %   Inputs:
 %       I - collected images (3d matrix)
@@ -31,6 +31,7 @@ function [o,phase,P,erro,erroS,idx_X,idx_Y] = Algorithm(I, PH, N_obj, idx_X, idx
 %       cImag - central image number
 %   Outputs:
 %       o - reconstructed object
+%
 %       P - reconstructed pupil
 %       erro - RMS error (compared to input data)
 %       erroS - RMS error (compared to known synthetic object)
@@ -94,24 +95,6 @@ erro = [];
 erroS = [];
 iter = 0;
 
-% displaying results
-if others.showIterResult == 1
-    o = gather(O);
-    o = IFT(o);
-    figure(88);
-    set(gcf,'Name','Iteration results');
-    set(gcf,'NumberTitle','off');
-    subplot(2,3,1); imagesc(abs(o)); colormap gray; colorbar;
-    title('object amplitude');
-    subplot(2,3,2); imagesc(angle(o)); colormap gray; colorbar;
-    title('object phase');
-    subplot(2,3,4); imagesc(abs(P)); colormap gray; colorbar;
-    title('pupil amplitude');
-    subplot(2,3,5); imagesc(angle(P).*abs(P)); colorbar;
-    title('pupil phase');
-    pause(0.1);
-end
-
 idx_X2 = idx_X(:,2:end); idx_Y2 = idx_Y(2:end,:);
 % max distance in Fourier space between adjacent LEDs
 sp0 = max(max(max(abs(idx_Y2-idx_Y(1:end-1,:)))),...
@@ -123,11 +106,7 @@ if mx<3; mx = 3; end
 if options.LEDcorrection == '2'
     warning('off')
 end
-try
-    waitbar(0,f,'iteration...1');
-catch
-    f = waitbar(0,'iteration...1');
-end
+
 if options.useGPU == 1
     err0 = gpuArray(0);
 else
@@ -201,20 +180,8 @@ switch options.algorithm
                 amp = amp./(max(max(amp)));
                 erroS = [erroS,rms(rms(amp-amps))];
             end
-            
-            f = ActualizeWaitbar(iter,options.maxIter,f,options);
-            if others.showIterResult == 1
-                DisplayIterationResult(o,P,erro,rectype,erroS)
-            end
-            if others.saveIterations == 1
-                if iter == 1
-                    iterationTiff = [];
-                end
-                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
-            end
         end
         phase = angle(o);
-        f = ActualizeWaitbar(iter,options.maxIter,f,options);
         
     case '2'    % Gerchberg-Saxton algorithm
         while iter<options.maxIter
@@ -271,19 +238,10 @@ switch options.algorithm
                 amp = amp./(max(max(amp)));
                 erroS = [erroS,rms(rms(amp-amps))];
             end
-            f = ActualizeWaitbar(iter,options.maxIter,f,options);
-            if others.showIterResult == 1
-                DisplayIterationResult(o,P,erro,rectype,erroS)
-            end
-            if others.saveIterations == 1
-                if iter == 1
-                    iterationTiff = [];
-                end
-                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
-            end
+
         end
         phase = angle(o);
-        f = ActualizeWaitbar(iter,options.maxIter,f,options);
+
         
     case '3'    % Algorithm template
         
@@ -328,98 +286,9 @@ switch options.algorithm
                 amp = amp./(max(max(amp)));
                 erroS = [erroS,rms(rms(amp-amps))];
             end
-            f = ActualizeWaitbar(iter,options.maxIter,f,options);
-            if others.showIterResult == 1
-                DisplayIterationResult(o,P,erro,rectype,erroS)
-            end
-            if others.saveIterations == 1
-                if iter == 1
-                    iterationTiff = [];
-                end
-                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
-            end
         end
         phase = angle(o);
-        f = ActualizeWaitbar(iter,options.maxIter,f,options);
-end
-try
-    close(f)
-end
-try
-    close(88)
-end
+
 end
 
-function DisplayIterationResult(o,P,erro,s,erroS)
-% display iteration results
-figure(88);
-set(gcf,'Name','Iteration results');
-set(gcf,'NumberTitle','off');
-subplot(2,3,1); imagesc(abs(o)); colormap gray; colorbar;
-title('object amplitude');
-subplot(2,3,2); imagesc(angle(o)); colormap gray; colorbar;
-title('object phase');
-subplot(2,3,3); plot(erro); title('RMSE (compared to input data)');
-subplot(2,3,4); imagesc(abs(P)); colormap gray; colorbar;
-title('pupil amplitude');
-subplot(2,3,5); imagesc(angle(P).*abs(P)); colorbar;
-title('pupil phase');
-if s == 1
-    subplot(2,3,6); plot(erroS);
-    title('RMSE (compared to known syntetic object)');
-end
-pause(0.1);
-end
-
-function iterationTiff = SaveIterationResult(o,iter,maxIter,iterationTiff)
-others = evalin('base','others');
-if iter == 1
-    lD = others.iterationsSaveDir;
-    t = now;
-    d = datetime(t,'ConvertFrom','datenum');
-    tmp = uint8(char(d));
-    for m = 1:length(tmp)
-        if(tmp(m)) == 58
-            tmp(m) = 45;
-        end
-    end
-    d = char(tmp(1:end-3));
-    iterationTiff = Tiff(strcat(lD,'/Iteration_Amplitude_',d,'.tif'),'w');
-end
-
-tagstruct.ImageLength = size(o,1);
-tagstruct.ImageWidth = size(o,2);
-tagstruct.SampleFormat = 1; % uint
-tagstruct.Photometric = Tiff.Photometric.MinIsBlack;
-tagstruct.BitsPerSample = 16;
-tagstruct.SamplesPerPixel = 1;
-tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
-setTag(iterationTiff,tagstruct);
-
-amplitude = abs(o);
-amplitude = amplitude-min(min(amplitude));
-amplitude = amplitude./max(max(amplitude)).*65535;
-write(iterationTiff,uint16(amplitude));
-writeDirectory(iterationTiff);
-if iter==maxIter
-    close(iterationTiff)
-end
-end
-
-function f = ActualizeWaitbar(iter,maxIter,f,options)
-% waitbar
-if iter < maxIter
-    progress = (iter)/maxIter;
-    try
-        waitbar(progress,f,strcat('iteration...',num2str(iter+1)));
-    catch
-        f = waitbar(progress,strcat('iteration...',num2str(iter+1)));
-    end
-else
-    try
-        waitbar(1,f,'finish');
-    catch
-        f = waitbar(1,'finish');
-    end
-end
 end

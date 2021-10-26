@@ -29,8 +29,9 @@
 % You should have received a copy of the GNU General Public License       %
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.   %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [f, g] = gradientPupil(zernike_est)
-    global pupil source fIDPC f_amplitude f_phase use_gpu;
+
+function [f, g] = gradientPupil(zernike_est, pupil, dim, fIDPC, source, zernike_poly, f_amplitude, f_phase, use_gpu)
+    %global pupil source fIDPC f_amplitude f_phase %use_gpu;
     F           = @(x) fft2(x);
     IF          = @(x) ifft2(x);
     if use_gpu
@@ -38,7 +39,7 @@ function [f, g] = gradientPupil(zernike_est)
     end
     f           = 0;
     g           = 0;
-    pupil_phase = aberrationGeneration(zernike_est);
+    pupil_phase = aberrationGeneration(zernike_est, zernike_poly, dim);
     pupil_est   = pupil.*exp(1i*pupil_phase);
     
     for source_index = 1:size(source, 3)
@@ -62,7 +63,7 @@ function [f, g] = gradientPupil(zernike_est)
         backprop_2    = F(-1i*conj(f_phase).*residual);
         grad_pupil    = (IF(f_sp.*(backprop_1+backprop_2)) +...
                         source_f.*IF(f_p.*(backprop_1-backprop_2)))/DC;
-        g             = g - aberrationDecomposition(-1i*conj(pupil_est).*grad_pupil);
+        g             = g - aberrationDecomposition(-1i*conj(pupil_est).*grad_pupil, zernike_poly);
     end
     f = gather(f);
     g = gather(real(g)); 

@@ -18,31 +18,18 @@
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.   %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [phase, pupil, pupilphase] = main_dpc(IDPC,systemSetup,aberration_correction)
-
-%clear; close all;
-%set(0, 'DefaultFigureWindowStyle', 'docked');
-global zernike_poly pupil dim source fIDPC pupilphase f_amplitude f_phase use_gpu
-%addpath('.\dpc_functions');
+function [phase, pupil, pupilphase] = main_dpc(IDPC,systemSetup,aberration_correction,use_gpu)
+if ~aberration_correction
+    pupilphase = [];
+end
 F             = @(x) fft2(x);
 IF            = @(x) ifft2(x);
 
 %% load data
-%aberration_correction = true;
-
-%if aberration_correction
-    % this example dataset for DPC with aberrations already remove the DC term 
-    % and normalized by the total energy (DC term)
-    %load('..\sample_data\dataset_DPC_with_aberration.mat');
-%else
-    %load('..\sample_data\dataset_DPC_MCF10A.mat');
-    %IDPC = permute(double(IDPC), [2, 3, 1]);
-    % image normalization
-    for image_index = 1:size(IDPC, 3)
-        image_load              = IDPC(:, :, image_index);
-        IDPC(:, :, image_index) = image_load/mean2(image_load)-1;
-    end
-%end
+for image_index = 1:size(IDPC, 3)
+    image_load              = IDPC(:, :, image_index);
+    IDPC(:, :, image_index) = image_load/mean2(image_load)-1;
+end
 
 %% system parameters
 %note: systemSetup is provided by FPM GUI App
@@ -53,7 +40,7 @@ na_illum      = sigma*na;                       % numerical aperture of the illu
 magnification = systemSetup.magnification;                           % magnification of the imaging system
 lambda        = systemSetup.lambda;                          % wavelength in micron
 ps            = systemSetup.camPizSize/magnification;              % pixel size in micron
-wavenumber    = 2*pi/lambda;                    % wave number
+%wavenumber    = 2*pi/lambda;                    % wave number
 if aberration_correction
     illu_rotation = [0, 180, 90];               % orientation of the illumination
 else
@@ -62,7 +49,8 @@ end
 num_rotation  = numel(illu_rotation);           % number of illumination used in DPC 
 na_inner      = [0, 0, 0, 0];                   % if annular illumination is used, set the na corresponds to the inner radius     
 num_Zernike   = 21;                             % highest order of Zernike coefficients used for pupil estimation
-setCoordinate();
+%setCoordinate();
+[Fx,Fy] = setCoordinate(ps,dim);
 
 %% show measurements
 if aberration_correction
@@ -70,14 +58,6 @@ if aberration_correction
 else
     num_images = num_rotation;
 end
-
-%figure('Name', 'normalized, background substracted DPC measurements', 'NumberTitle', 'off')
-%for source_index = 1:num_images
-%   subplot(2, 2, source_index);
-%   imagesc(IDPC(:, :, source_index)); axis image; axis off; colormap gray; caxis([-0.5, 0.5]);
-%   title(['DPC ', num2str(source_index)], 'FontSize', 24);
-%end
-%drawnow;
 
 %% generate illumination sources
 source             = zeros(dim(1), dim(2), num_images); 
@@ -95,32 +75,9 @@ for source_index = 1:num_images
     end
 end
 
-%figure('Name', 'Illumination and Phase Optical Transfer Functions', 'NumberTitle', 'off');
-%fig_rows    = floor(sqrt(num_images));
-%fig_cols    = floor(num_images/fig_rows);
-%for fig_index = 1:num_images
-%    ax = subplot(fig_rows, fig_cols, fig_index);
-%    imagesc(fftshift(fx), fftshift(fy), fftshift(source(:, :, fig_index))); axis image; axis off;
-%    title(['Source ', num2str(fig_index)]);
-%    colormap(ax, 'gray'); caxis([0, 1]);
-%end
-%drawnow;
-
 %% generate Zernike polynomials
 pupil         = (Fx.^2+Fy.^2<=(na/lambda)^2);
 zernike_poly  = genZernikePoly(Fx, Fy, na, lambda, num_Zernike);
-
-%figure('Name', 'generated Zernike polynomials (Defocus and Astigmatism)', 'NumberTitle', 'off');
-%subplot(131)
-%imagesc(fftshift(fx), fftshift(fy), fftshift(reshape(zernike_poly(:, 1), dim))); axis image; axis off; colormap jet;
-%title('aberration, Z_3', 'fontsize', 24);
-%subplot(132)
-%imagesc(fftshift(fx), fftshift(fy), fftshift(reshape(zernike_poly(:, 2), dim))); axis image; axis off; colormap jet;
-%title('aberration, Z_4', 'fontsize', 24);
-%subplot(133)
-%imagesc(fftshift(fx), fftshift(fy), fftshift(reshape(zernike_poly(:, 3), dim))); axis image; axis off; colormap jet;
-%title('aberration, Z_5', 'fontsize', 24);
-%drawnow;
 
 %% joint estimation pupil function, amplitude and phase
 
@@ -137,9 +94,6 @@ end
 reg_L2              = 1.0*[1e-1, 5e-3];            % parameters for L2 regurlarization [amplitude, phase] (can set to a very small value in noiseless case)
 use_tv              = false;                       % true: use TV regularization, false: use L2 regularization
 tau                 = [1e-5, 5e-3];                % parameters for total variation [amplitude, phase] (can set to a very small value in noiseless case)
-verbose             = false;                        % true: show loss value and elapsed time at each iteration
-show_result         = false;                        % true: show amplitude, phase and aberration images at each iteration
-use_gpu             = true;                       % true: use GPU, false: use CPU
 
 % parameters of L-BFGS algorithm for pupil estimation (default values should work)
 addpath(genpath('..\minFunc\'));                   % add the path where you install the minFunc package
@@ -159,18 +113,16 @@ if use_gpu
     fIDPC  = gpuArray(fIDPC);
 end
 
-t_start             = tic();
 loss                = zeros(max_iter_algorithm, 1);
-%fig_results         = figure('Name', 'Reconstruction Process', 'NumberTitle', 'off');
 
 for iter = 1:max_iter_algorithm
 
     if ~use_tv
         % Least-Squares with L2 regularization
-        [amplitude_k, phase_k]       = DPC_L2(zernike_coeff_k, reg_L2);
-    else
+        [amplitude_k, phase_k]       = DPC_L2(pupil, dim, fIDPC, source, zernike_coeff_k, zernike_poly, reg_L2, use_gpu);
+    else 
         % ADMM algorithm with total variation regularization
-        global padsize Dx Dy;
+        %global padsize Dx Dy;
         padsize                      = 0;
         temp                         = zeros(dim);
         temp(1, 1)                   = 1;
@@ -193,7 +145,8 @@ for iter = 1:max_iter_algorithm
         end
         
         for iter_ADMM = 1:20
-           [amplitude_k, phase_k] = DPC_TV(zernike_coeff_k, rho, z_k, u_k, reg_L2);
+           [amplitude_k, phase_k] = DPC_TV(pupil, dim, fIDPC, source, zernike_coeff_k, zernike_poly, rho, z_k, u_k, reg_L2, Dx, Dy, padsize, use_gpu);
+
             if iter_ADMM < 20
                 D_x(:, :, 1)   = amplitude_k - circshift(amplitude_k, [0, -1]);
                 D_x(:, :, 2)   = amplitude_k - circshift(amplitude_k, [-1, 0]);
@@ -216,46 +169,25 @@ for iter = 1:max_iter_algorithm
         f_phase     = F(phase_k);
 
         % pupil estimation
-        [zernike_coeff_k, loss(iter)] = minFunc(@gradientPupil, zernike_coeff_k, options);
-        pupilphase                    = aberrationGeneration(zernike_coeff_k);
-        
-        % print cost function value and computation time at each iteration
-        if verbose
-            fprintf('iteration: %04d, loss: %5.5e, elapsed time: %4.2f seconds\n', iter, loss(iter), toc(t_start));   
-        end
+        [zernike_coeff_k, loss(iter)] = minFunc(@gradientPupil, zernike_coeff_k, options, pupil, dim, fIDPC, source, zernike_poly, f_amplitude, f_phase, use_gpu);
+        pupilphase                    = aberrationGeneration(zernike_coeff_k, zernike_poly, dim);
+
     end
     
     % plot recovered amplitude, phase and aberration at each iteration
-    if show_result
-        figure(fig_results);
-        ax1 = subplot(2, 2, 1);
-        imagesc(x, y, amplitude_k); axis image; axis off;
-        colormap(ax1, 'gray'); caxis([-.15, 0.02]);
-        title('recovered \alpha','FontSize', 24);
-        ax2 = subplot(2, 2, 2);
-        imagesc(x, y, phase_k); axis image; axis off;
-        colormap(ax2, 'gray');
-        title('recovered \phi', 'FontSize', 24);
-        if aberration_correction
-            ax3 = subplot(2, 2, 3);
-            imagesc(fftshift(fx), fftshift(fy), fftshift(pupilphase)); axis image; axis off;
-            colormap(ax3, 'jet'); caxis([-1.0, 1.0]);
-            title('recovered aberration', 'FontSize', 24);
-            subplot(2, 2, 4);
-            plot(1:iter, log10(loss(1:iter)), 'bo'); axis square;
-            xlabel('iteration', 'FontSize', 20);
-            ylabel('log_1_0(loss)', 'FontSize', 20)
-            title('loss', 'FontSize', 24);
-            linkaxes([ax1, ax2]);
-        end
-        drawnow;
-    end
+    
 end
 
 % extract results and variables from GPU memory if using GPU computation
-amplitude  = gather(amplitude_k); % optimized amplitude
+%amplitude  = gather(amplitude_k); % optimized amplitude
 phase      = gather(phase_k);     % optimized phase
-pupilphase = gather(pupilphase);  % optimized aberration function
-pupil      = gather(pupil);
-source     = gather(source);
-fIDPC      = gather(fIDPC);
+if aberration_correction
+    pupilphase = gather(pupilphase);  % optimized aberration function
+    pupil      = gather(pupil);
+else
+    pupilphase = zeros(size(phase));
+    pupil = zeros(size(phase));
+end
+
+%source     = gather(source);
+%fIDPC      = gather(fIDPC);

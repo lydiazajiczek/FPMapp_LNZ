@@ -79,7 +79,7 @@ pth = ChangeSlash(pwd);
 load(strcat(pth,'/initialization.mat'));
 load(strcat(pth,'/initialization2.mat'));
 
-GUI1_modified;
+GUI1_modified_2;
 try
     close(f0)
 end

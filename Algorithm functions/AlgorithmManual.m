@@ -1,4 +1,4 @@
-function [rec_object,phase, rec_pupil,err,erro,idx_X2,idx_Y2,svdIdx] = AlgorithmManual(ImagesIn, LEDs, imageColOrder, LEDsUsed, ROI, ROI_bg, systemSetup, options, showIm, svdIdx,rectype)
+function [rec_object,phase, rec_pupil,err,erro,idx_X2,idx_Y2,svdIdx] = AlgorithmManual(ImagesIn, LEDs, imageColOrder, LEDsUsed, ROI, ROI_bg, systemSetup, options, others, svdIdx,rectype)
 % Function that runs FPM algorithms
 %   Inputs:
 %       ImagesIn - collected images (3d matrix)
@@ -96,15 +96,15 @@ bgStack = ImagesIn(ROI_bg(2):ROI_bg(2)+ROI_bg(4)-1,ROI_bg(1):ROI_bg(1)+ROI_bg(3)
 [ImagesIn,imageColOrder] = InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI);
 %remove background first using ROI of whole image
 if options.dfBackground == 1
-    [ImagesIn, ~] = BackgroundRemovingROI(ImagesIn,bgStack,LEDs,imageColOrder,systemSetup);
+    [ImagesIn, ~] = BackgroundRemovingROI(ImagesIn,bgStack,options.scaleFactor,LEDs,imageColOrder,systemSetup);
     [~, bck] = BackgroundRemoving(ImagesIn,thr);
 else
     [ImagesIn, bck] = BackgroundRemoving(ImagesIn,thr);
 end
 %then do pupil initialization just of cropped region
-if options.InitPhasePupil == 1
-    IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,true);
-    [PhaseIn,Pupil,PupilPhase] = main_dpc(IDPC,systemSetup,true);
+if options.InitPhase == 1
+    IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,options.InitPupil);
+    [PhaseIn,Pupil,PupilPhase] = main_dpc(IDPC,systemSetup,options.InitPupil,options.useGPU);
 else
     PhaseIn = zeros(size(ImagesIn,1),size(ImagesIn,2));
 end
@@ -163,7 +163,7 @@ end
 ridx = sqrt(mm.^2+nn.^2);
 um_idx = um_m/min(dux,duy);
 
-if options.InitPhasePupil
+if options.InitPupil
     phase0 = double(fftshift(PupilPhase));
     pupil0 = double(fftshift(Pupil));
     pupil0 = pupil0.*exp(1i.*phase0);
@@ -237,7 +237,7 @@ N_objY = ROI(4)*N_objX/ROI(3);
 
 [rec_object,phase,rec_pupil, err, erro,idx_X2,idx_Y2] = ... 
     Algorithm(ImagesIn, PhaseIn, [N_objY,N_objX], idx_X, idx_Y, imageColOrder, ...
-    recOrder, pupil0, options, cImag, f, showIm, rectype);
+    recOrder, pupil0, options, cImag, f, others, rectype);
 
 % corrected LEDs positions
 svdIdx.idx_X = idx_X2;
