@@ -310,7 +310,7 @@ parfor i=1:nz
     %my ropey attempt to normalize phase
     %phase_mod = phase.*((max(max(phase_in)) - min(min(phase_in)))/(abs(max(max(phase)) - min(min(phase))))) ...
     %                   - (max(max(phase_in)) - min(min(phase_in)))/2;
-    imwrite_float(single(phase_norm),[saveDir '\phase' num2str(i,'%03d') '.tif'])
+    imwrite_float(single(phase),[saveDir '\phase' num2str(i,'%03d') '.tif'])
     
     %save pupil just for fun
     imwrite_float(single(angle(pupil)),[saveDir '\pupil' num2str(i,'%03d') '.tif'])

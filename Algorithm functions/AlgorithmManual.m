@@ -81,7 +81,7 @@ end
 thr = (max(bck)+min(bck))/2;
 
 %Get background ROI before cropping
-bgStack = ImagesIn(ROI_bg(2):ROI_bg(2)+ROI_bg(4)-1,ROI_bg(1):ROI_bg(1)+ROI_bg(3)-1,:);
+bgStack = InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI_bg);%ImagesIn(ROI_bg(2):ROI_bg(2)+ROI_bg(4)-1,ROI_bg(1):ROI_bg(1)+ROI_bg(3)-1,:);
 
 %%%%%%%%%%%%put this back for stitching
 
