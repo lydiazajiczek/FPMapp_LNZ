@@ -81,8 +81,9 @@ end
 thr = (max(bck)+min(bck))/2;
 
 %Get background ROI before cropping
-bgStack = InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI_bg);%ImagesIn(ROI_bg(2):ROI_bg(2)+ROI_bg(4)-1,ROI_bg(1):ROI_bg(1)+ROI_bg(3)-1,:);
-
+if options.dfBackground == 1
+    bck = reshape(mean(mean(InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI_bg))),[],1);
+end
 %%%%%%%%%%%%put this back for stitching
 
 %first find initial phase of whole image (for use in stitching)
@@ -96,7 +97,7 @@ bgStack = InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI_bg);%ImagesIn(ROI_
 [ImagesIn,imageColOrder] = InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI);
 %remove background first using ROI of whole image
 if options.dfBackground == 1
-    [ImagesIn, ~] = BackgroundRemovingROI(ImagesIn,bgStack,options.scaleFactor,LEDs,imageColOrder,systemSetup);
+    ImagesIn = BackgroundRemovingROI(ImagesIn,bck,options.scaleFactor,LEDs,imageColOrder,systemSetup);
     [~, bck] = BackgroundRemoving(ImagesIn,thr);
 else
     [ImagesIn, bck] = BackgroundRemoving(ImagesIn,thr);

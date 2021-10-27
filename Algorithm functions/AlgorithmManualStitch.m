@@ -87,9 +87,10 @@ else
 end
 thr = (max(bck)+min(bck))/2;
 
+nImgs = nnz(LEDsUsed);
 %create stack of background ROIs
 if backgroundROICorr
-    bgStack = ImagesIn(ROI_bg(2):ROI_bg(2)+ROI_bg(4)-1,ROI_bg(1):ROI_bg(1)+ROI_bg(3)-1,:);
+    bck = reshape(mean(mean(InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI_bg))),[],1);
 end
 
 %then find initial phase of whole image (to keep phase consistent in stitching)
@@ -97,6 +98,7 @@ if options.InitPhase
     disp('generating initial phase estimate (DPC)')
     IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,false);
     [PhaseIn,~,~] = main_dpc(IDPC,systemSetup,false,options.useGPU);
+    clear IDPC;
 else
     PhaseIn = zeros(ny,nx);
 end
@@ -181,7 +183,7 @@ disp('generating image ROI stacks')
 nz = length(ROIList);
 I = zeros(sy,sx,nImgs,nz);
 PH = zeros(sy,sx,nz);
-on_axis = double(ImagesIn(:,:,cImag));
+on_axis = ImagesIn(:,:,cImag);
 OA = zeros(sy,sx,nz);
 
 %vectorize
@@ -193,28 +195,16 @@ for i=1:nz
     PH(:,:,i) = PhaseIn(coords(1):coords(2),coords(3):coords(4),:);
     OA(:,:,i) = on_axis(coords(1):coords(2),coords(3):coords(4),:);
 end
+clear PhaseIn on_axis;
 
 tile_config = zeros(nz,2); %for generating tile config file for IJ stitching
+contentInPatch = PatchContent(ImagesIn,imageColOrder,LEDsUsed,ROIList);
 
 disp('reconstructing patches...')
-parfor i=1:nz
-%for i=1:2
-    %disp('cropping and removing background')
-    %[imgs,colOrder] = InputImagesCrop(I(:,:,:,i),imageColOrder,LEDsUsed,[1 1 sx sy]);
-    if backgroundROICorr
-        [~, bck] = BackgroundRemoving(I(:,:,:,i),thr);
-        [I(:,:,:,i), ~] = BackgroundRemovingROI(I(:,:,:,i),bgStack,scaleFactor,LEDs_old,imageColOrder,systemSetup);
-    else
-        [I(:,:,:,i), bck] = BackgroundRemoving(I(:,:,:,i),thr);
-    end
-    recOrder = img_order(LEDs, colOrder, LEDsUsed, options.recorder, bck); %#ok<PFBNS>
-
-    coords = ROIList(i,:);
-    %I = ImagesIn(coords(1):coords(2),coords(3):coords(4),:); %#ok<PFBNS>
-    %PH = PhaseIn(coords(1):coords(2),coords(3):coords(4)); %need to
-    %calculate phase from whole image
-
+for i=1:nz
+    fprintf('Patch %d | %d\n',i,nz);
     %% LEDs position
+    coords = ROIList(i,:);
     img_center_x = (coords(3)-center(1)+sx/2)*pixSizeObj/1000;  %#ok<PFBNS>
     img_center_y = (coords(1)-center(2)+sy/2)*pixSizeObj/1000; %(2)
     
@@ -242,6 +232,25 @@ parfor i=1:nz
     end
     N_objY = sy*N_objX/sy;
     tile_config(i,:) = [(coords(3)-1).*uint16(N_objX/sx),(coords(1)-1).*uint16(N_objY/sy)];
+    
+    %% Content awareness - will skip rest of loop here if no content in patch
+    if contentInPatch(i) == 0
+        amplitude = uint16(imresize(OA(:,:,i),N_objX));
+        imwrite(amplitude,[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
+        imwrite_float(single(imresize(PH(:,:,i)),N_objX),[saveDir '\phase' num2str(i,'%03d') '.tif'])
+        fprintf('Skipping patch %d | %d\n',i,nz);
+        continue
+    end
+
+    %% Background correction
+    if backgroundROICorr
+        [~, bck] = BackgroundRemoving(I(:,:,:,i),thr);
+        I(:,:,:,i) = BackgroundRemovingROI(I(:,:,:,i),bck,scaleFactor,LEDs_old,imageColOrder,systemSetup);
+    else
+        [I(:,:,:,i), bck] = BackgroundRemoving(I(:,:,:,i),thr);
+    end
+    recOrder = img_order(LEDs, colOrder, LEDsUsed, options.recorder, bck); %#ok<PFBNS>
+    %%
     
     % corresponding spatial freq for each LEDs
     xFreq = sin_thetaX/lambda;

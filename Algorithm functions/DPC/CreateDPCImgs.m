@@ -1,5 +1,5 @@
 %create top, bottom, right images for quantitative DPC
-
+%todo rewrite using indices rather than for loops
 function IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,aberrationCorrection)
 
 [nx, ny] = size(LEDsUsed);
