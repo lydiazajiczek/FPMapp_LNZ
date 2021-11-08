@@ -199,9 +199,9 @@ clear PhaseIn on_axis;
 
 tile_config = zeros(nz,2); %for generating tile config file for IJ stitching
 contentInPatch = PatchContent(ImagesIn,imageColOrder,LEDsUsed,ROIList);
-
+%%
 disp('reconstructing patches...')
-for i=1:nz
+parfor i=1:nz
     fprintf('Patch %d | %d\n',i,nz);
     %% LEDs position
     coords = ROIList(i,:);
@@ -235,9 +235,9 @@ for i=1:nz
     
     %% Content awareness - will skip rest of loop here if no content in patch
     if contentInPatch(i) == 0
-        amplitude = uint16(imresize(OA(:,:,i),N_objX));
+        amplitude = uint16(imresize(OA(:,:,i),N_objX/sx));
         imwrite(amplitude,[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
-        imwrite_float(single(imresize(PH(:,:,i)),N_objX),[saveDir '\phase' num2str(i,'%03d') '.tif'])
+        imwrite_float(single(imresize(PH(:,:,i),N_objX/sx)),[saveDir '\phase' num2str(i,'%03d') '.tif'])
         fprintf('Skipping patch %d | %d\n',i,nz);
         continue
     end

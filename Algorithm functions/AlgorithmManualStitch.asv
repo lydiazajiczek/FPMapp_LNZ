@@ -98,6 +98,7 @@ if options.InitPhase
     disp('generating initial phase estimate (DPC)')
     IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,false);
     [PhaseIn,~,~] = main_dpc(IDPC,systemSetup,false,options.useGPU);
+    clear IDPC;
 else
     PhaseIn = zeros(ny,nx);
 end
@@ -182,7 +183,7 @@ disp('generating image ROI stacks')
 nz = length(ROIList);
 I = zeros(sy,sx,nImgs,nz);
 PH = zeros(sy,sx,nz);
-on_axis = double(ImagesIn(:,:,cImag));
+on_axis = ImagesIn(:,:,cImag);
 OA = zeros(sy,sx,nz);
 
 %vectorize
@@ -194,12 +195,13 @@ for i=1:nz
     PH(:,:,i) = PhaseIn(coords(1):coords(2),coords(3):coords(4),:);
     OA(:,:,i) = on_axis(coords(1):coords(2),coords(3):coords(4),:);
 end
+clear PhaseIn on_axis;
 
 tile_config = zeros(nz,2); %for generating tile config file for IJ stitching
 contentInPatch = PatchContent(ImagesIn,imageColOrder,LEDsUsed,ROIList);
 
 disp('reconstructing patches...')
-parfor i=1:nz
+for i=1:nz
     fprintf('Patch %d | %d\n',i,nz);
     %% LEDs position
     coords = ROIList(i,:);
@@ -232,7 +234,7 @@ parfor i=1:nz
     tile_config(i,:) = [(coords(3)-1).*uint16(N_objX/sx),(coords(1)-1).*uint16(N_objY/sy)];
     
     %% Content awareness - will skip rest of loop here if no content in patch
-    if contentInPatch(i)
+    if contentInPatch(i) == 0
         amplitude = uint16(imresize(OA(:,:,i),N_objX));
         imwrite(amplitude,[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
         imwrite_float(single(imresize(PH(:,:,i)),N_objX),[saveDir '\phase' num2str(i,'%03d') '.tif'])
