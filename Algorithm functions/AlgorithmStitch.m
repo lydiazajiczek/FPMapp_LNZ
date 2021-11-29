@@ -1,4 +1,4 @@
-function [o,phase,P,erro,erroS,idx_X,idx_Y] = AlgorithmStitch(I, PH, N_obj, idx_X, idx_Y, imageColOrder, recOrder, pupil0, options, cImag, rectype)
+function [o,phase,P,erro,erroS,idx_X,idx_Y] = AlgorithmStitch(I, PH, AM, N_obj, idx_X, idx_Y, imageColOrder, recOrder, pupil0, options, cImag, others, rectype)
 % Function that executes FPM algorithms
 %   Inputs:
 %       I - collected images (3d matrix)
@@ -73,6 +73,9 @@ if isempty(cImag) % no central image used in reconstruction
     nXs = idx_X(ledsY,ledsX);
     nYs = idx_Y(ledsY,ledsX);
     cen = cen0 + [nYs,nXs];   % Position in Fourier domain of the initial guess
+elseif options.InitAmp
+    Os = FT(sqrt(complex(AM))); %use summed incoherent image as initial guess
+    cen = cen0; %is this right? what is cen?
 else % central image used in reconstruction
     %Os = FT(sqrt(I(:,:,cImag)));  % Central image is the initial guess
     Os = FT(sqrt(complex(I(:,:,cImag))));  % Central image is the initial guess
@@ -180,6 +183,13 @@ switch options.algorithm
                 amp = amp./(max(max(amp)));
                 erroS = [erroS,rms(rms(amp-amps))];
             end
+            
+            if others.saveIterations == 1
+                if iter == 1
+                    iterationTiff = [];
+                end
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff,others);
+            end
         end
         phase = angle(o);
         
@@ -238,7 +248,13 @@ switch options.algorithm
                 amp = amp./(max(max(amp)));
                 erroS = [erroS,rms(rms(amp-amps))];
             end
-
+            if others.saveIterations == 1
+                if iter == 1
+                    iterationTiff = [];
+                end
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff,others);
+            end
+            
         end
         phase = angle(o);
 
@@ -286,9 +302,50 @@ switch options.algorithm
                 amp = amp./(max(max(amp)));
                 erroS = [erroS,rms(rms(amp-amps))];
             end
+            if others.saveIterations == 1
+                if iter == 1
+                    iterationTiff = [];
+                end
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff,others);
+            end
         end
         phase = angle(o);
 
 end
 
+end
+
+function iterationTiff = SaveIterationResult(o,iter,maxIter,iterationTiff,others)
+%others = evalin('base','others');
+if iter == 1
+    lD = others.iterationsSaveDir;
+    t = now;
+    d = datetime(t,'ConvertFrom','datenum');
+    tmp = uint8(char(d));
+    for m = 1:length(tmp)
+        if(tmp(m)) == 58
+            tmp(m) = 45;
+        end
+    end
+    d = char(tmp(1:end-3));
+    iterationTiff = Tiff(strcat(lD,'/Iteration_Amplitude_',d,'.tif'),'w');
+end
+
+tagstruct.ImageLength = size(o,1);
+tagstruct.ImageWidth = size(o,2);
+tagstruct.SampleFormat = 1; % uint
+tagstruct.Photometric = Tiff.Photometric.MinIsBlack;
+tagstruct.BitsPerSample = 16;
+tagstruct.SamplesPerPixel = 1;
+tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
+setTag(iterationTiff,tagstruct);
+
+amplitude = abs(o);
+amplitude = amplitude-min(min(amplitude));
+amplitude = amplitude./max(max(amplitude)).*65535;
+write(iterationTiff,uint16(amplitude));
+writeDirectory(iterationTiff);
+if iter==maxIter
+    close(iterationTiff)
+end
 end

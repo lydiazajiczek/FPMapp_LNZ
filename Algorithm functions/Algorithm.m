@@ -1,4 +1,4 @@
-function [o,phase,P,erro,erroS,idx_X,idx_Y] = Algorithm(I, PH, N_obj, idx_X, idx_Y, imageColOrder, recOrder, pupil0, options, cImag, f, others, rectype)
+function [o,phase,P,erro,erroS,idx_X,idx_Y] = Algorithm(I, PH, AM, N_obj, idx_X, idx_Y, imageColOrder, recOrder, pupil0, options, cImag, f, others, rectype)
 % Function that executes FPM algorithms
 %   Inputs:
 %       I - collected images (3d matrix)
@@ -72,8 +72,15 @@ if isempty(cImag) % no central image used in reconstruction
     nXs = idx_X(ledsY,ledsX);
     nYs = idx_Y(ledsY,ledsX);
     cen = cen0 + [nYs,nXs];   % Position in Fourier domain of the initial guess
-else % central image used in reconstruction
+elseif options.InitAmp
+    Os = FT(sqrt(complex(AM))); %use summed incoherent image as initial amplitude guess
+    cen = cen0;
+else% central image used in reconstruction
     %Os = FT(sqrt(I(:,:,cImag)));  % Central image is the initial guess
+    
+    %%%%use incoherent image instead of central image
+    
+    
     Os = FT(sqrt(complex(I(:,:,cImag))));  % Central image is the initial guess
 %     [ledsY,ledsX] = find(imageColOrder == cImag);
     cen = cen0;
@@ -210,7 +217,7 @@ switch options.algorithm
                 if iter == 1
                     iterationTiff = [];
                 end
-                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff,others);
             end
         end
         phase = angle(o);
@@ -279,7 +286,7 @@ switch options.algorithm
                 if iter == 1
                     iterationTiff = [];
                 end
-                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff,others);
             end
         end
         phase = angle(o);
@@ -336,7 +343,7 @@ switch options.algorithm
                 if iter == 1
                     iterationTiff = [];
                 end
-                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff);
+                iterationTiff = SaveIterationResult(o,iter,options.maxIter,iterationTiff,others);
             end
         end
         phase = angle(o);
@@ -371,8 +378,8 @@ end
 pause(0.1);
 end
 
-function iterationTiff = SaveIterationResult(o,iter,maxIter,iterationTiff)
-others = evalin('base','others');
+function iterationTiff = SaveIterationResult(o,iter,maxIter,iterationTiff,others)
+%others = evalin('base','others');
 if iter == 1
     lD = others.iterationsSaveDir;
     t = now;

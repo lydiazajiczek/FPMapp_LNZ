@@ -71,7 +71,6 @@ f = waitbar(0,'initialization');
 
 % preparing input images - ROI cropping, background removing, converting to
 % GPU array
-% initialize phase here (haven't implemented pupil estimation yet
 bck = zeros(nImgs,1);
 if sy>100 && sx>100
     for nn = 1:nImgs; bck(nn) = mean2(ImagesIn(1:100,1:100,nn)); end
@@ -84,13 +83,13 @@ thr = (max(bck)+min(bck))/2;
 if options.dfBackground == 1
     bck = reshape(mean(mean(InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI_bg))),[],1);
 end
-%%%%%%%%%%%%put this back for stitching
 
 %first find initial phase of whole image (for use in stitching)
-%if options.InitPhasePupil == 1
-%    IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,false);
-%    [PhaseInWhole,~,~] = main_dpc(IDPC,systemSetup,false);
-%end
+if options.InitPhase || options.InitAmp
+    [IDPC, incoh_img] = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,false);
+    [PhaseInWhole,~,~] = main_dpc(IDPC,systemSetup,false,options.useGPU);
+end
+clear IDPC
 
 %then crop
 %[ImagesIn,PhaseIn,imageColOrder] = InputImagesCrop(ImagesIn,PhaseIn,imageColOrder,LEDsUsed,ROI);
@@ -102,12 +101,23 @@ if options.dfBackground == 1
 else
     [ImagesIn, bck] = BackgroundRemoving(ImagesIn,thr);
 end
+
 %then do pupil initialization just of cropped region
-if options.InitPhase == 1
-    IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,options.InitPupil);
-    [PhaseIn,Pupil,PupilPhase] = main_dpc(IDPC,systemSetup,options.InitPupil,options.useGPU);
+if options.InitPupil == 1
+    [IDPC, ~] = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,options.InitPupil);
+    [~,Pupil,PupilPhase] = main_dpc(IDPC,systemSetup,true,options.useGPU);
+end
+%now crop phase
+if options.InitPhase
+    PhaseIn = PhaseInWhole(ROI(2):ROI(2)+ROI(4)-1,ROI(1):ROI(1)+ROI(3)-1);
 else
     PhaseIn = zeros(size(ImagesIn,1),size(ImagesIn,2));
+end
+
+if options.InitAmp
+    AmpIn = incoh_img(ROI(2):ROI(2)+ROI(4)-1,ROI(1):ROI(1)+ROI(3)-1);
+else
+    AmpIn = [];
 end
 
 if options.useGPU == 1
@@ -236,8 +246,11 @@ N_objY = ROI(4)*N_objX/ROI(3);
 
 %% reconstruction algorithm
 
+%figure
+%imshow(PhaseIn,[])
+
 [rec_object,phase,rec_pupil, err, erro,idx_X2,idx_Y2] = ... 
-    Algorithm(ImagesIn, PhaseIn, [N_objY,N_objX], idx_X, idx_Y, imageColOrder, ...
+    Algorithm(ImagesIn, PhaseIn, AmpIn, [N_objY,N_objX], idx_X, idx_Y, imageColOrder, ...
     recOrder, pupil0, options, cImag, f, others, rectype);
 
 % corrected LEDs positions

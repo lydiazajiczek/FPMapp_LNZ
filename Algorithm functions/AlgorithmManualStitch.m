@@ -1,4 +1,4 @@
-function AlgorithmManualStitch(ImagesIn, LEDs, imageColOrder, LEDsUsed, ROIList, ROI_bg, saveDir, systemSetup, options, svdIdx,rectype)
+function AlgorithmManualStitch(ImagesIn, LEDs, imageColOrder, LEDsUsed, ROIList, ROI_bg, saveDir, systemSetup, options, others, svdIdx,rectype)
 % Function that runs FPM algorithms
 %   Inputs:
 %       ImagesIn - collected images (3d matrix)
@@ -56,11 +56,6 @@ function AlgorithmManualStitch(ImagesIn, LEDs, imageColOrder, LEDsUsed, ROIList,
 %           options.useGPU
 %               1 - use GPU acceleration
 %               0 - don't use
-%   Outputs:
-%       rec_object - reconstructed object (complex double)
-%       rec_pupil - reconstructed pupil (complex double)
-%       err - RMS error (compared to input data)
-%       erro - RMS error (compared to known synthetic object)
 
 %% initialization
 tic
@@ -93,16 +88,15 @@ if backgroundROICorr
     bck = reshape(mean(mean(InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI_bg))),[],1);
 end
 
+[IDPC, incoh_img] = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,false);
 %then find initial phase of whole image (to keep phase consistent in stitching)
 if options.InitPhase
     disp('generating initial phase estimate (DPC)')
-    IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,false);
-    [PhaseIn,~,~] = main_dpc(IDPC,systemSetup,false,options.useGPU);
-    clear IDPC;
+    [PhaseIn,~,~] = main_dpc(IDPC,systemSetup,false,options.useGPU); 
 else
     PhaseIn = zeros(ny,nx);
 end
-%then crop
+clear IDPC;
 
 %remove background first using ROI of whole image
 %if options.dfBackground == 1
@@ -180,11 +174,12 @@ yy = 1:ys; yy = (yy - cledY).*LEDspacing;
 %recOrder = img_order(LEDs, imageColOrder, LEDsUsed, options.recorder, bck);
 
 disp('generating image ROI stacks')
-nz = length(ROIList);
+nz = size(ROIList,1);
 I = zeros(sy,sx,nImgs,nz);
 PH = zeros(sy,sx,nz);
 on_axis = ImagesIn(:,:,cImag);
 OA = zeros(sy,sx,nz);
+INC = zeros(sy,sx,nz);
 
 %vectorize
 for i=1:nz
@@ -194,6 +189,7 @@ for i=1:nz
                                             imageColOrder,LEDsUsed,[1 1 sx sy]);
     PH(:,:,i) = PhaseIn(coords(1):coords(2),coords(3):coords(4),:);
     OA(:,:,i) = on_axis(coords(1):coords(2),coords(3):coords(4),:);
+    INC(:,:,i) = incoh_img(coords(1):coords(2),coords(3):coords(4),:);
 end
 clear PhaseIn on_axis;
 
@@ -270,7 +266,7 @@ parfor i=1:nz
     %disp('estimating pupil')
     %then do pupil initialization just of cropped region
     if initPupil == 1
-        IDPC = CreateDPCImgs(I(:,:,:,i),LEDsUsed,colOrder,true);
+        [IDPC,~] = CreateDPCImgs(I(:,:,:,i),LEDsUsed,colOrder,true);
         [~,PupilAmp,PupilPhase] = main_dpc(IDPC,systemSetup,true,options.useGPU);
         phase0 = double(fftshift(PupilPhase));
         pupil0 = double(fftshift(PupilAmp));
@@ -290,9 +286,10 @@ parfor i=1:nz
     
     %disp('reconstructing')
     %% reconstruction algorithm
+        
     [rec_object, phase, pupil, ~, ~, ~, ~] = ... 
-        AlgorithmStitch(I(:,:,:,i), PH(:,:,i), [N_objY,N_objX], idx_X, idx_Y, colOrder, ...
-        recOrder, pupil0, options, cImag, rectype); %showIm=false
+        AlgorithmStitch(I(:,:,:,i), PH(:,:,i), INC(:,:,i), [N_objY,N_objX], idx_X, idx_Y, colOrder, ...
+        recOrder, pupil0, options, cImag, others, rectype); %showIm=false
     %AlgorithmStitch(I, PH, N_obj, idx_X, idx_Y, imageColOrder, recOrder, pupil0, options, cImag, rectype)
     
     %disp('writing to disk')
@@ -301,14 +298,14 @@ parfor i=1:nz
     amplitude = abs(rec_object); %convert to real
         
     %normalize to incoherent image (summed and normalized image stack)
-    incoh_img = sum(I(:,:,:,i),3); 
-    incoh_img = incoh_img.*(max(max(OA(:,:,i)))/max(max(incoh_img)));
-    amplitude = uint16((min(min(incoh_img))/(min(min(amplitude))+1)).*amplitude);
+    %incoh_img = sum(I(:,:,:,i),3); 
+    %incoh_img = incoh_img.*(max(max(OA(:,:,i)))/max(max(incoh_img)));
+    amplitude_norm = uint16((min(min(INC(:,:,i)))/(min(min(amplitude))+1)).*amplitude);
     
     %histogram equalization
-    [n,~] = histcounts(uint16(incoh_img));
-    amplitude = uint16(histeq(amplitude,n));
-    imwrite(amplitude,[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
+    [n,~] = histcounts(INC(:,:,i));
+    amplitude_norm = uint16(histeq(amplitude_norm,n));
+    imwrite_float(single(amplitude),[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
     
     %% normalize phase and write to disk
     phase_in = (PH(:,:,i)+pi)./(2*pi); %convert to [0 1] for histogram normalization

@@ -1,6 +1,13 @@
 %create top, bottom, right images for quantitative DPC
 %todo rewrite using indices rather than for loops
-function IDPC = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,aberrationCorrection)
+function [IDPC, incoh_img] = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,aberrationCorrection)
+
+%%calculate incoherent image here for use as amplitude initialiation
+%%and for normalization during stitching
+
+max_val = double(max(max(max(ImagesIn))));
+incoh_img = double(sum(ImagesIn,3));
+incoh_img = incoh_img.*(max_val/max(max(incoh_img)));
 
 [nx, ny] = size(LEDsUsed);
 IDPC = double(zeros([size(ImagesIn,1) size(ImagesIn,2) 4]));
