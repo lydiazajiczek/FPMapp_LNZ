@@ -396,7 +396,7 @@ end
 
 tagstruct.ImageLength = size(o,1);
 tagstruct.ImageWidth = size(o,2);
-tagstruct.SampleFormat = 1; % uint
+tagstruct.SampleFormat = Tiff.SampleFormat.UInt;
 tagstruct.Photometric = Tiff.Photometric.MinIsBlack;
 tagstruct.BitsPerSample = 16;
 tagstruct.SamplesPerPixel = 1;
@@ -404,6 +404,7 @@ tagstruct.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
 setTag(iterationTiff,tagstruct);
 
 amplitude = abs(o);
+
 amplitude = amplitude-min(min(amplitude));
 amplitude = amplitude./max(max(amplitude)).*65535;
 write(iterationTiff,uint16(amplitude));

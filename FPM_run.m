@@ -20,7 +20,8 @@ expectedStitchTypes = {'single_ROI', 'test_ROI', 'all_ROIs'};
 defaultOverlap = 0.1;
 defaultROILength = 256;
 defaultROIVertex = [-1, -1]; %find central ROI if not specified
-defaultCorrLEDPosns = 'C:\Datasets\FPM\11\507983\correction_results.mat';
+%defaultCorrLEDPosns = 'C:\Datasets\FPM\11\507983\correction_results.mat';
+defaultCorrLEDPosns = 'F:\FPM images\2021\11\508993\leds.mat';
 
 p = inputParser;
 validFilepath = @(x) exist(x,'file')>0;
@@ -47,7 +48,8 @@ ROIVertex = p.Results.ROIVertex;
 keyword = p.Results.Keyword;
 
 %%%%Initialization
-init_path = 'C:\Users\lydia\Code\github_repos\FPMapp_LNZ\';
+%init_path = 'C:\Users\lydia\Code\github_repos\FPMapp_LNZ\';
+init_path = 'F:\FPMapp_LNZ\';
 addpath([init_path '\Algorithm functions']);
 addpath([init_path '\Algorithm functions\BM3D']);
 addpath([init_path '\Algorithm functions\sort_nat']);
@@ -56,12 +58,13 @@ addpath([init_path '\Algorithm functions\DPC\dpc_functions']);
 addpath([init_path '\Algorithm functions\minFunc']);
 addpath([init_path '\GUI functions']);
 
-load([init_path '/initialization.mat'], ...
+load([init_path '/settings/settings.mat'], ...
     'imageColOrder', 'LEDs', 'LEDsUsed', 'options', 'systemSetup'); 
-load([init_path '/initialization2.mat'], 'others'); 
+load([init_path '/settings/settings2.mat'], 'others'); 
 
 options.dfBackground = false; %can change this obviously
 options.LEDcorrection = '0';
+options.maxIter = 5;
 tmp0 = load(p.Results.CorrLEDPosns,'svdIdx');
 others.showIterResult = false;
 others.loadPrevLEDPos = true;
@@ -106,15 +109,35 @@ for i=1:length(FOVList)
             I = LoadImage(string(FOVList(i)));
             [folder, filename, ~] = fileparts(FOVList(i));
         case 'multi_TIFF'
-            I = LoadImage(FOVList(i));
+            
             [folder, filename, ~] = fileparts(FOVList(i));
+            split_filename = split(filename,'_');
+            colour = split_filename(1);
+            img_num = split_filename(2);
+        
+            img_num = str2num(img_num);
+            if img_num < 14 || img_num > 126
+                continue;
+            end
+        
+            switch lower(colour)
+                case 'red'
+                    systemSetup.lambda = 0.6292;
+                case 'green'
+                    systemSetup.lambda = 0.53;
+                case 'blue'
+                    systemSetup.lambda = 0.475;
+            end
+            I = LoadImage(FOVList(i));
 %             saveDir = [folder '\' filename '_reconstruction\'];
     end
+
+    
     
     [ny,nx,~] = size(I);
     
     %%%%obtain summed incoherent image
-    incoh_img = sum(I(:,:,:,i),3);
+    incoh_img = sum(I,3);
     incoh_img = uint16(incoh_img.*double(max(max(max(I))))/max(max(incoh_img)));
      
     %%%%find all ROIs including max contrast ROI
@@ -129,7 +152,8 @@ for i=1:length(FOVList)
             patch = imcrop(incoh_img,ROI);
             max_patch = max(max(patch));
             min_patch = min(min(patch));
-            contrast = double(max_patch-min_patch)/double(max_patch+min_patch);
+            %contrast = double(max_patch-min_patch)/double(max_patch+min_patch);
+            contrast = std2(patch);
             if contrast > contrast_max
                 contrast_max = contrast;
                 ROI_max = ROI;
@@ -163,9 +187,10 @@ for i=1:length(FOVList)
             [rec_object,phase,rec_pupil,~,~,~,~,~] = AlgorithmManual(...
                 I, LEDs, imageColOrder, LEDsUsed, ROI, [], ...
                 systemSetup, options, others, tmp0.svdIdx, 2);
-            imwrite_float(single(abs(rec_object)),strcat(folder,'\',filename,'amplitude.tif'));
+            imwrite_uint16(imcrop(incoh_img,ROI),strcat(folder,'\',filename,'inc_sum.tif'))
+            imwrite_uint16(abs(rec_object),strcat(folder,'\',filename,'amplitude.tif'));
             imwrite_float(single(phase),strcat(folder,'\',filename,'phase.tif'));
-            imwrite_float(single(fftshift(rec_pupil)),strcat(folder,'\',filename,'pupil.tif'));
+            imwrite_float(single(angle(rec_pupil)),strcat(folder,'\',filename,'pupil_phase.tif'));
             
         case 'test_ROI'
 %             ROIList = [ROI_max];
@@ -173,14 +198,19 @@ for i=1:length(FOVList)
             ROI(2) = uint16(ROI_max(1));
             ROI(3) = sx;
             ROI(4) = sx;
+            
+            writematrix(ROI,strcat(folder,'\',filename,'ROI.txt'),'Delimiter',',');
+            
             disp(['reconstructing max contrast ROI: [' num2str(ROI(1)) ' ' ...
                  num2str(ROI(2)) ' ' num2str(ROI(3)) ' ' num2str(ROI(4)) ']'])
             [rec_object,phase,rec_pupil,~,~,~,~,~] = AlgorithmManual(...
                 I, LEDs, imageColOrder, LEDsUsed, ROI, [], ...
                 systemSetup, options, others, tmp0.svdIdx, 2);
-            imwrite_float(single(abs(rec_object)),strcat(folder,'\',filename,'test_amplitude.tif'));
+            
+            imwrite_uint16(imcrop(incoh_img,ROI),strcat(folder,'\',filename,'test_inc_sum.tif'))
+            imwrite_uint16(abs(rec_object),strcat(folder,'\',filename,'test_amplitude.tif'));
             imwrite_float(single(phase),strcat(folder,'\',filename,'test_phase.tif'));
-            imwrite_float(single(fftshift(rec_pupil)),strcat(folder,'\',filename,'test_pupil.tif'));
+            imwrite_float(single(angle(rec_pupil)),strcat(folder,'\',filename,'test_pupil_phase.tif'));
             
             %I, LEDs, imageColOrder, LEDsUsed, ROIList(90,:), ...
         case 'all_ROIs'
