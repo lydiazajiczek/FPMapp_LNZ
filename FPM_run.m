@@ -6,15 +6,16 @@
 %%%%'multi_TIFFs')
 %%%%-type of stitching ('single_ROI', 'test_ROIs', 'all_ROIs')
 %%%%optional inputs: 
-%%%%-'ROILength' (square works best so only one parameter, default 256)
-%%%%-'ROIVertex' (otherwise finds central ROI)
-%%%%-'overlap' (default is 10%, provide in decimal)
+%%%%-'ROILength' (for single_ROI, square works best so only one side, default 256)
+%%%%-'ROIVertex' (for single_ROI, otherwise finds central ROI: [x0, y0])
+%%%%-'overlap' (for all_ROIs, default is 10%, provide in decimal)
 %%%%-'CorrLEDPosns' (filepath to corrected LED positions .mat file, 
 %%%%default hardcoded in file)
+%%%%-'Keyword' to filter multipage TIFFs to process in folder e.g. 'blue'
 
 function FPM_run(filepath,reconType,stitchType,varargin)
 
-expectedReconTypes = {'single_directory', 'single_TIFF', 'multi_TIFFs'};
+expectedReconTypes = {'single_directory', 'single_TIFF', 'multi_TIFF'};
 expectedStitchTypes = {'single_ROI', 'test_ROI', 'all_ROIs'};
 defaultOverlap = 0.1;
 defaultROILength = 256;
@@ -27,7 +28,9 @@ validReconTypes = @(x) any(validatestring(x,expectedReconTypes));
 validStitchTypes = @(x) any(validatestring(x,expectedStitchTypes));
 validOverlap = @(x) isnumeric(x) && (x >=0 ) && (x < 1);
 validROILength = @(x) isnumeric(x) && isscalar(x) && (x > 0);
-validROIVertex = @(x) isvector(x) && length(x) == 2 && all(x > 0);
+validROIVertex = @(x) isvector(x) && length(x) == 2 ...
+                        && all(x > 0) && all(rem(x,1)==0);
+validKeyword = @(x) isstring(x) || ischar(x);
 addRequired(p,'filepath',validFilepath)
 addRequired(p,'reconType',validReconTypes)
 addRequired(p,'stitchType',validStitchTypes)
@@ -35,11 +38,13 @@ addParameter(p,'overlap',defaultOverlap,validOverlap);
 addParameter(p,'ROILength',defaultROILength,validROILength);
 addParameter(p,'ROIVertex',defaultROIVertex,validROIVertex);
 addParameter(p,'CorrLEDPosns',defaultCorrLEDPosns,validFilepath)
+addParameter(p,'Keyword','',validKeyword);
 parse(p,filepath,reconType,stitchType,varargin{:});
 
 overlap = p.Results.overlap;
 sx = p.Results.ROILength;
 ROIVertex = p.Results.ROIVertex;
+keyword = p.Results.Keyword;
 
 %%%%Initialization
 init_path = 'C:\Users\lydia\Code\github_repos\FPMapp_LNZ\';
@@ -58,10 +63,10 @@ load([init_path '/initialization2.mat'], 'others');
 options.dfBackground = false; %can change this obviously
 options.LEDcorrection = '0';
 tmp0 = load(p.Results.CorrLEDPosns,'svdIdx');
-others.showIterResult = false; %doesn't make sense for parfor
+others.showIterResult = false;
 others.loadPrevLEDPos = true;
-others.saveIterations = true; %see what's going on
-others.iterationsSaveDir = 'C:\Datasets\FPM\10\08\513282\green_1_reconstruction\';
+others.saveIterations = false;
+%others.iterationsSaveDir = 'C:\Datasets\FPM\10\08\513282\green_1_reconstruction\';
 
 FOVList = [];
 switch reconType
@@ -70,19 +75,21 @@ switch reconType
             error('Filepath is not a directory.')
         end
         FOVList = [FOVList string(filepath)]; %#ok<*NBRAK>
-        saveDir = [filepath '\reconstruction\'];
+%         saveDir = filepath;%[filepath '\reconstruction\'];
     case 'single_TIFF'
         if isfolder(filepath)
             error('Filepath is a directory, not a file.')
         end
         FOVList = [FOVList string(filepath)];
-        [folder, filename, ~] = fileparts(filepath);
-        saveDir = [folder '\' filename '_reconstruction\'];
+        [folder, ~, ~] = fileparts(filepath);
+%         saveDir = folder;
+%         saveDir = [folder '\' filename '_reconstruction\'];
     case 'multi_TIFF'
         if ~isfolder(filepath)
             error ('Filepath is not a directory.')
         end
-        FOVList = LoadDir(filepath);
+        FOVList = LoadDir(filepath,keyword);
+%         saveDir = filepath;
         if isempty(FOVList)
             error('Directory contains no multipage TIFFs.')
         end
@@ -92,18 +99,18 @@ end
 for i=1:length(FOVList)
     switch reconType
         case 'single_directory'
-            [I,~] = LoadImages(string(FOVList(i)));
+            folder = string(FOVList(i));
+            [I,~] = LoadImages(folder);
+            filename = '';
         case 'single_TIFF'
             I = LoadImage(string(FOVList(i)));
+            [folder, filename, ~] = fileparts(FOVList(i));
         case 'multi_TIFF'
             I = LoadImage(FOVList(i));
             [folder, filename, ~] = fileparts(FOVList(i));
-            saveDir = [folder '\' filename '_reconstruction\'];
+%             saveDir = [folder '\' filename '_reconstruction\'];
     end
-    %%%%make save directory
-    if exist(saveDir,'dir')==0
-        mkdir(saveDir)
-    end
+    
     [ny,nx,~] = size(I);
     
     %%%%obtain summed incoherent image
@@ -122,7 +129,7 @@ for i=1:length(FOVList)
             patch = imcrop(incoh_img,ROI);
             max_patch = max(max(patch));
             min_patch = min(min(patch));
-            contrast = (max_patch-min_patch)/(max_patch+min_patch);
+            contrast = double(max_patch-min_patch)/double(max_patch+min_patch);
             if contrast > contrast_max
                 contrast_max = contrast;
                 ROI_max = ROI;
@@ -133,6 +140,10 @@ for i=1:length(FOVList)
         end
         ix = (ix+sx-overlap*sx); 
         iy = 1;
+    end
+    
+    if ~isempty(filename)
+        filename = strcat(filename,'_');
     end
         
     switch stitchType
@@ -152,13 +163,14 @@ for i=1:length(FOVList)
             [rec_object,phase,rec_pupil,~,~,~,~,~] = AlgorithmManual(...
                 I, LEDs, imageColOrder, LEDsUsed, ROI, [], ...
                 systemSetup, options, others, tmp0.svdIdx, 2);
-            imwrite_float(single(abs(rec_object)),[saveDir 'amplitude.tif']);
-            imwrite_float(single(phase),[saveDir 'phase.tif']);
+            imwrite_float(single(abs(rec_object)),strcat(folder,'\',filename,'amplitude.tif'));
+            imwrite_float(single(phase),strcat(folder,'\',filename,'phase.tif'));
+            imwrite_float(single(fftshift(rec_pupil)),strcat(folder,'\',filename,'pupil.tif'));
             
         case 'test_ROI'
 %             ROIList = [ROI_max];
-            ROI(1) = ROI_max(1);
-            ROI(2) = ROI_max(3);
+            ROI(1) = uint16(ROI_max(3));
+            ROI(2) = uint16(ROI_max(1));
             ROI(3) = sx;
             ROI(4) = sx;
             disp(['reconstructing max contrast ROI: [' num2str(ROI(1)) ' ' ...
@@ -166,11 +178,17 @@ for i=1:length(FOVList)
             [rec_object,phase,rec_pupil,~,~,~,~,~] = AlgorithmManual(...
                 I, LEDs, imageColOrder, LEDsUsed, ROI, [], ...
                 systemSetup, options, others, tmp0.svdIdx, 2);
-            imwrite_float(single(abs(rec_object)),[saveDir 'test_amplitude.tif']);
-            imwrite_float(single(phase),[saveDir 'test_phase.tif']);
+            imwrite_float(single(abs(rec_object)),strcat(folder,'\',filename,'test_amplitude.tif'));
+            imwrite_float(single(phase),strcat(folder,'\',filename,'test_phase.tif'));
+            imwrite_float(single(fftshift(rec_pupil)),strcat(folder,'\',filename,'test_pupil.tif'));
             
             %I, LEDs, imageColOrder, LEDsUsed, ROIList(90,:), ...
         case 'all_ROIs'
+            saveDir = strcat(folder,'\',filename,'reconstruction\');
+            %%%%make save directory
+            if exist(saveDir,'dir')==0
+                mkdir(saveDir)
+            end
             AlgorithmManualStitch(...
                         I, LEDs, imageColOrder, LEDsUsed, ROIList, ...
                         [], saveDir, systemSetup, options, ...
@@ -187,12 +205,7 @@ for i=1:length(FOVList)
             %%%%bottom left
             %ROIList(4,:) = [ny-sx+1, 1, sx, sx]; 
             %%%%bottom right
-            %ROIList(5,:) = [ny-sx+1, nx-sx+1, sx, sx];
-    
-    
-    %%%%do not pass ROI_bg for now, passing 2 to recType means it's not
-    %%%%synthetic data
-    
+            %ROIList(5,:) = [ny-sx+1, nx-sx+1, sx, sx];   
 end
 end
 

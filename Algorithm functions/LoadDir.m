@@ -1,9 +1,15 @@
-function FOVList = LoadDir(loadDirectory)
+function FOVList = LoadDir(loadDirectory,varargin)
 % Function that checks a directory for big TIFFs
 %   Inputs:
 %       loadDirectory - directory where are input FPM images
 %   Outputs:
 %       FOVList - list of paths to big TIFFs to be loaded with LoadImage.m
+
+if ~isempty(varargin)
+    keyword = varargin{1};
+else
+    keyword = '';
+end
 
 fileList = dir(loadDirectory);
 fileList(2) = []; fileList(1) = [];
@@ -23,7 +29,9 @@ clear fileList;
 FOVList = [];
 for i=1:length(imageList)
     filename_full = strcat(loadDirectory,'\',imageList(i));
-    if length(imfinfo(filename_full)) > 1
-        FOVList = [FOVList filename_full]; %#ok<AGROW>
+    if contains(filename_full,keyword)
+        if length(imfinfo(filename_full)) > 1          
+            FOVList = [FOVList filename_full]; %#ok<AGROW>
+        end
     end
 end
