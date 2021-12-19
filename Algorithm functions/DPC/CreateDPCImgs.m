@@ -5,9 +5,7 @@ function [IDPC, incoh_img] = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,aberr
 %%calculate incoherent image here for use as amplitude initialiation
 %%and for normalization during stitching
 
-max_val = double(max(max(max(ImagesIn))));
-incoh_img = double(sum(ImagesIn,3));
-incoh_img = incoh_img.*(max_val/max(max(incoh_img)));
+incoh_img = IncoherentImage(ImagesIn,LEDsUsed,imageColOrder);
 
 [nx, ny] = size(LEDsUsed);
 IDPC = double(zeros([size(ImagesIn,1) size(ImagesIn,2) 4]));

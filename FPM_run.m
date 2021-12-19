@@ -14,14 +14,14 @@
 %%%%-'Keyword' to filter multipage TIFFs to process in folder e.g. 'blue'
 
 function FPM_run(filepath,reconType,stitchType,varargin)
-
+fpm_run_start = tic;
 expectedReconTypes = {'single_directory', 'single_TIFF', 'multi_TIFF'};
 expectedStitchTypes = {'single_ROI', 'test_ROI', 'all_ROIs'};
-defaultOverlap = 0.1;
-defaultROILength = 256;
+defaultOverlap = 0.14;
+defaultROILength = 243;
 defaultROIVertex = [-1, -1]; %find central ROI if not specified
 %defaultCorrLEDPosns = 'C:\Datasets\FPM\11\507983\correction_results.mat';
-defaultCorrLEDPosns = 'F:\FPM images\2021\11\508993\leds.mat';
+defaultCorrLEDPosns = fullfile(filepath,'leds.mat');
 
 p = inputParser;
 validFilepath = @(x) exist(x,'file')>0;
@@ -57,6 +57,7 @@ addpath([init_path '\Algorithm functions\DPC']);
 addpath([init_path '\Algorithm functions\DPC\dpc_functions']);
 addpath([init_path '\Algorithm functions\minFunc']);
 addpath([init_path '\GUI functions']);
+addpath([init_path '\misc']);
 
 load([init_path '/settings/settings.mat'], ...
     'imageColOrder', 'LEDs', 'LEDsUsed', 'options', 'systemSetup'); 
@@ -70,6 +71,8 @@ others.showIterResult = false;
 others.loadPrevLEDPos = true;
 others.saveIterations = false;
 %others.iterationsSaveDir = 'C:\Datasets\FPM\10\08\513282\green_1_reconstruction\';
+
+use_mask = true;
 
 FOVList = [];
 switch reconType
@@ -110,15 +113,15 @@ for i=1:length(FOVList)
             [folder, filename, ~] = fileparts(FOVList(i));
         case 'multi_TIFF'
             
-            [folder, filename, ~] = fileparts(FOVList(i));
+            [folder, filename, ext] = fileparts(FOVList(i));
             split_filename = split(filename,'_');
             colour = split_filename(1);
-            img_num = split_filename(2);
-        
-            img_num = str2num(img_num);
-            if img_num < 14 || img_num > 126
-                continue;
-            end
+%             img_num = split_filename(2);
+%         
+%             img_num = str2num(img_num);
+%             if img_num < 14 || img_num > 126
+%                 continue;
+%             end
         
             switch lower(colour)
                 case 'red'
@@ -131,41 +134,58 @@ for i=1:length(FOVList)
             I = LoadImage(FOVList(i));
 %             saveDir = [folder '\' filename '_reconstruction\'];
     end
-
-    
-    
+   
     [ny,nx,~] = size(I);
     
     %%%%obtain summed incoherent image
-    incoh_img = sum(I,3);
-    incoh_img = uint16(incoh_img.*double(max(max(max(I))))/max(max(incoh_img)));
-     
+    if ~strcmp(stitchType,'all_ROIs')
+        incoh_img = sum(I,3);
+        incoh_img = uint16(incoh_img.*double(max(max(max(I))))/max(max(incoh_img)));
+    end
+
+    %%%%load fov mask
+    if use_mask
+        mask_filename = strcat(folder,'masks/',filename,'_mask',ext);
+        if isfile(mask_filename)
+            mask = ~imread(mask_filename);
+            
+        else
+            disp(strcat('No mask found: ',mask_filename))
+            mask = [];
+        end
+    else
+        mask = [];
+    end
+   
     %%%%find all ROIs including max contrast ROI
-    contrast_max = 0;
-    ROI_max = [];
+    contrast_values = [];
     j = 1;
-    ix = 1;
-    iy = 1;
-    while (nx-ix+1) > sx  
-        while (ny-iy+1) > sx
-            ROI = [iy,iy+sx-1,ix,ix+sx-1];
-            patch = imcrop(incoh_img,ROI);
-            max_patch = max(max(patch));
-            min_patch = min(min(patch));
-            %contrast = double(max_patch-min_patch)/double(max_patch+min_patch);
-            contrast = std2(patch);
-            if contrast > contrast_max
-                contrast_max = contrast;
-                ROI_max = ROI;
+    overlap_sx = round((1-overlap)*sx); %ROI size - overlap
+    ix = 1+fix(mod(nx-sx,overlap_sx)/2); %offset ROI start positions
+    iy = 1+fix(mod(ny-sx,overlap_sx)/2); %to center the covered area
+    start_iy = iy;
+    while (nx-ix+1) > overlap_sx  
+        while (ny-iy+1) > overlap_sx
+            ROI = [iy,ix,sx-1,sx-1];
+            if ~strcmp(stitchType,'all_ROIs')
+                patch = imcrop(incoh_img,ROI);
+                contrast_values = [contrast_values,std2(patch)];
             end
+            
             ROIList(j,:) = [iy,iy+sx-1,ix,ix+sx-1]; %#ok<AGROW>
-            iy = (iy+sx-overlap*sx);  
+            iy = iy+overlap_sx;  
         j = j+1;
         end
-        ix = (ix+sx-overlap*sx); 
-        iy = 1;
+        ix = ix+overlap_sx; 
+        iy = start_iy;
     end
-    
+    contentInPatch = PatchContent(I,[],[],ROIList,mask)';
+    if ~strcmp(stitchType,'all_ROIs')
+        contrast_values = contrast_values.*contentInPatch;
+        [~,max_contrast] = max(contrast_values);
+        ROI_max = ROIList(max_contrast,:);
+    end
+
     if ~isempty(filename)
         filename = strcat(filename,'_');
     end
@@ -222,7 +242,7 @@ for i=1:length(FOVList)
             AlgorithmManualStitch(...
                         I, LEDs, imageColOrder, LEDsUsed, ROIList, ...
                         [], saveDir, systemSetup, options, ...
-                        others, tmp0.svdIdx, 2);
+                        others, tmp0.svdIdx, 2,mask);
             
     end
             %ROIList = zeros(5,4);
@@ -237,6 +257,11 @@ for i=1:length(FOVList)
             %%%%bottom right
             %ROIList(5,:) = [ny-sx+1, nx-sx+1, sx, sx];   
 end
+total_time = toc(fpm_run_start);
+message = 'Filepath: '+filepath+' fully reconstructed.'+newline...
++'Total time elapsed: '+datestr(datenum(0,0,0,0,0,total_time),'HH:MM:SS');
+disp(message);
+email('MATLAB Notification',message);
 end
 
 function ROI = centralROI(nx,ny,sx,sy)

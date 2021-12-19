@@ -74,6 +74,7 @@ addpath('./Algorithm functions/DPC');
 addpath('./Algorithm functions/DPC/dpc_functions');
 addpath('./Algorithm functions/minFunc');
 addpath('./GUI functions');
+addpath('./misc');
 
 pth = ChangeSlash(pwd);
 load(strcat(pth,'/initialization.mat'));

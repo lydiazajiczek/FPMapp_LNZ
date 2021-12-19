@@ -1,4 +1,4 @@
-function AlgorithmManualStitch(ImagesIn, LEDs, imageColOrder, LEDsUsed, ROIList, ROI_bg, saveDir, systemSetup, options, others, svdIdx,rectype)
+function AlgorithmManualStitch(ImagesIn, LEDs, imageColOrder, LEDsUsed, ROIList, ROI_bg, saveDir, systemSetup, options, others, svdIdx,rectype,mask)
 % Function that runs FPM algorithms
 %   Inputs:
 %       ImagesIn - collected images (3d matrix)
@@ -65,7 +65,11 @@ tic
 %options
 initPupil = options.InitPupil;
 backgroundROICorr = options.dfBackground;
-scaleFactor = options.scaleFactor;
+if backgroundROICorr
+    scaleFactor = options.scaleFactor;
+else
+    scaleFactor = 1;
+end
 useGPU = options.useGPU;
 
 [ny,nx,nImgs] = size(ImagesIn);
@@ -88,15 +92,18 @@ if backgroundROICorr
     bck = reshape(mean(mean(InputImagesCrop(ImagesIn,imageColOrder,LEDsUsed,ROI_bg))),[],1);
 end
 
-[IDPC, incoh_img] = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,false);
 %then find initial phase of whole image (to keep phase consistent in stitching)
 if options.InitPhase
+    [IDPC, incoh_img] = CreateDPCImgs(ImagesIn,LEDsUsed,imageColOrder,false);
     disp('generating initial phase estimate (DPC)')
     [PhaseIn,~,~] = main_dpc(IDPC,systemSetup,false,options.useGPU); 
 else
     PhaseIn = zeros(ny,nx);
+    incoh_img = IncoherentImage(ImagesIn,LEDsUsed,imageColOrder);
 end
 clear IDPC;
+
+imwrite_float(single(incoh_img),fullfile(saveDir, 'incoherent.tif'));
 
 %remove background first using ROI of whole image
 %if options.dfBackground == 1
@@ -107,7 +114,7 @@ clear IDPC;
 
 [cledY,cledX] = find(LEDs == 2);    % central LED position
 LEDs_old = LEDs; %UGH
-LEDs(LEDs>1) = 1;
+%LEDs(LEDs>1) = 1;
 
 if LEDsUsed(cledY,cledX) == 0
     cImag = [];
@@ -175,10 +182,10 @@ yy = 1:ys; yy = (yy - cledY).*LEDspacing;
 
 disp('generating image ROI stacks')
 nz = size(ROIList,1);
-I = zeros(sy,sx,nImgs,nz);
+I = zeros(sy,sx,nImgs,nz,'uint16');
 PH = zeros(sy,sx,nz);
-on_axis = ImagesIn(:,:,cImag);
-OA = zeros(sy,sx,nz);
+%on_axis = ImagesIn(:,:,cImag);
+%OA = zeros(sy,sx,nz);
 INC = zeros(sy,sx,nz);
 
 %vectorize
@@ -188,13 +195,16 @@ for i=1:nz
     [I(:,:,:,i),colOrder] = InputImagesCrop(ImagesIn(coords(1):coords(2),coords(3):coords(4),:),...
                                             imageColOrder,LEDsUsed,[1 1 sx sy]);
     PH(:,:,i) = PhaseIn(coords(1):coords(2),coords(3):coords(4),:);
-    OA(:,:,i) = on_axis(coords(1):coords(2),coords(3):coords(4),:);
+    %OA(:,:,i) = on_axis(coords(1):coords(2),coords(3):coords(4),:);
     INC(:,:,i) = incoh_img(coords(1):coords(2),coords(3):coords(4),:);
 end
-clear PhaseIn on_axis;
+clear PhaseIn;
 
 tile_config = zeros(nz,2); %for generating tile config file for IJ stitching
-contentInPatch = PatchContent(ImagesIn,imageColOrder,LEDsUsed,ROIList);
+if nargin < 13
+    mask = [];
+end
+contentInPatch = PatchContent(ImagesIn,imageColOrder,LEDsUsed,ROIList,mask);
 %%
 disp('reconstructing patches...')
 parfor i=1:nz
@@ -231,9 +241,9 @@ parfor i=1:nz
     
     %% Content awareness - will skip rest of loop here if no content in patch
     if contentInPatch(i) == 0
-        amplitude = uint16(imresize(OA(:,:,i),N_objX/sx));
-        imwrite(amplitude,[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
-        imwrite_float(single(imresize(PH(:,:,i),N_objX/sx)),[saveDir '\phase' num2str(i,'%03d') '.tif'])
+%         amplitude = uint16(imresize(INC(:,:,i),N_objX/sx));
+%         imwrite(amplitude,[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
+%         imwrite_float(single(imresize(PH(:,:,i),N_objX/sx)),[saveDir '\phase' num2str(i,'%03d') '.tif'])
         fprintf('Skipping patch %d | %d\n',i,nz);
         continue
     end
@@ -288,45 +298,47 @@ parfor i=1:nz
     %% reconstruction algorithm
         
     [rec_object, phase, pupil, ~, ~, ~, ~] = ... 
-        AlgorithmStitch(I(:,:,:,i), PH(:,:,i), INC(:,:,i), [N_objY,N_objX], idx_X, idx_Y, colOrder, ...
+        AlgorithmStitch(double(I(:,:,:,i)), PH(:,:,i), INC(:,:,i), [N_objY,N_objX], idx_X, idx_Y, colOrder, ...
         recOrder, pupil0, options, cImag, others, rectype); %showIm=false
     %AlgorithmStitch(I, PH, N_obj, idx_X, idx_Y, imageColOrder, recOrder, pupil0, options, cImag, rectype)
     
+    parsave(fullfile(saveDir,"complex_"+num2str(i,'%03d')+".mat"),rec_object);
+
     %disp('writing to disk')
     %% convert rec_object to uint16 and write to disk
     %% normalize brightness using histogram equalization of on-axis image
-    amplitude = abs(rec_object); %convert to real
+%     amplitude = abs(rec_object); %convert to real
         
     %normalize to incoherent image (summed and normalized image stack)
     %incoh_img = sum(I(:,:,:,i),3); 
     %incoh_img = incoh_img.*(max(max(OA(:,:,i)))/max(max(incoh_img)));
-    amplitude_norm = uint16((min(min(INC(:,:,i)))/(min(min(amplitude))+1)).*amplitude);
+%     amplitude_norm = uint16((min(min(INC(:,:,i)))/(min(min(amplitude))+1)).*amplitude);
     
     %histogram equalization
-    [n,~] = histcounts(INC(:,:,i));
-    amplitude_norm = uint16(histeq(amplitude_norm,n));
-    imwrite_float(single(amplitude),[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
+%     [n,~] = histcounts(INC(:,:,i));
+%     amplitude_norm = uint16(histeq(amplitude_norm,n));
+%     imwrite_float(single(amplitude),[saveDir '\amplitude' num2str(i,'%03d') '.tif'])
     
     %% normalize phase and write to disk
-    phase_in = (PH(:,:,i)+pi)./(2*pi); %convert to [0 1] for histogram normalization
-    phase_norm = (phase+pi)./(2*pi);
-    [n,~] = histcounts(phase_in);
-    phase_norm = (2*pi).*histeq(phase_norm,n); %convert back to [0 2pi]
-    
+%     phase_in = (PH(:,:,i)+pi)./(2*pi); %convert to [0 1] for histogram normalization
+%     phase_norm = (phase+pi)./(2*pi);
+%     [n,~] = histcounts(phase_in);
+%     phase_norm = (2*pi).*histeq(phase_norm,n); %convert back to [0 2pi]
+
     %my ropey attempt to normalize phase
     %phase_mod = phase.*((max(max(phase_in)) - min(min(phase_in)))/(abs(max(max(phase)) - min(min(phase))))) ...
     %                   - (max(max(phase_in)) - min(min(phase_in)))/2;
-    imwrite_float(single(phase),[saveDir '\phase' num2str(i,'%03d') '.tif'])
+%     imwrite_float(single(phase),[saveDir '\phase' num2str(i,'%03d') '.tif'])
     
     %save pupil just for fun
-    imwrite_float(single(angle(pupil)),[saveDir '\pupil' num2str(i,'%03d') '.tif'])
+%     imwrite_float(single(angle(pupil)),[saveDir '\pupil' num2str(i,'%03d') '.tif'])
     
 end
 
 %write tile configuration files for ImageJ stitching here
-f_amp = fopen([saveDir '\AmplitudeTileConfiguration.txt'],'w+');
+f_amp = fopen(fullfile(saveDir,'AmplitudeTileConfiguration.txt'),'w+');
 fprintf(f_amp,'dim = 2\n');
-f_ph = fopen([saveDir '\PhaseTileConfiguration.txt'],'w+');
+f_ph = fopen(fullfile(saveDir, 'PhaseTileConfiguration.txt'),'w+');
 fprintf(f_ph,'dim = 2\n');
 for i=1:nz
    str = ['amplitude' num2str(i,'%03d') '.tif; ; (' num2str(tile_config(i,1)) ',' num2str(tile_config(i,2)) ')\n'];

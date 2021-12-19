@@ -142,6 +142,9 @@ switch options.algorithm
                 if iter > 1 && options.IntCorr == 1
                     %c(ledY,ledX) = sum(sum(sqrt(I_est)))/sum(sum(sqrt(I_mea)));
                     c(ledY,ledX) = sum(sum(sqrt(complex(I_est))))/sum(sum(sqrt(complex(I_mea))));
+                    if isinf(c(ledY,ledX))
+                        c(ledY,ledX) = 1;   %fix for when sum of I_mea = 0;
+                    end
                 end
                 
                 % projection 1
@@ -155,6 +158,9 @@ switch options.algorithm
                     GDUpdate_Multiplication_rank1(O,P,dpsi,Omax,cen,pupil0,...
                     options.alpha,options.beta);
                 [O,P] = P2(O,P,dPsi,Omax,cen);
+                if sum(sum(isnan(O)))>0
+                    disp('');
+                end
                 err0(mm) = rms(rms(I_mea - I_est));
                 
                 % % displaying current Fourier space
